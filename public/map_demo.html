@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>海口平行峡谷：全城阵营战 终极完全体</title>
+    <script src="https://map.qq.com/api/gljs?v=1.exp&key=HZEBZ-PFWWA-RXOKS-CKQHU-NE3BJ-Y7FQU"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        /* 基础与地图滤镜 */
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Microsoft YaHei', sans-serif; background: #000; color: #fff; }
+        #map-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #map-container canvas { filter: invert(100%) hue-rotate(180deg) brightness(112%) contrast(128%) saturate(145%); }
+
+        /* 左上角：队伍频道 (赛博通讯) */
+        #team-channel { position: absolute; top: 18px; left: 18px; width: 340px; height: 420px; z-index: 30; display: none; flex-direction: column; background: rgba(0, 10, 18, 0.88); border: 1px solid rgba(0, 210, 255, 0.45); border-radius: 12px; box-shadow: 0 0 25px rgba(0, 210, 255, 0.25); backdrop-filter: blur(10px); overflow: hidden; }
+        #team-channel.active { display: flex; }
+        #team-channel .tc-header { padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,210,255,0.25); background: rgba(0,210,255,0.08); }
+        #team-channel .tc-title { font-weight: 900; letter-spacing: 1px; color: #00d2ff; text-shadow: 0 0 10px rgba(0,210,255,0.35); display: flex; align-items: center; gap: 10px; }
+        #team-channel .tc-title::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #00d2ff; box-shadow: 0 0 12px #00d2ff; animation: pulse 1.5s infinite; }
+        #team-channel .tc-badges { display: flex; gap: 8px; align-items: center; }
+        .tc-badge { font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid rgba(57,255,20,0.35); color: #39ff14; background: rgba(57,255,20,0.10); }
+        .tc-badge.offline { border-color: rgba(255, 51, 51, 0.35); color: #ff3333; background: rgba(255,51,51,0.10); }
+
+        #tc-help { background: rgba(255, 51, 51, 0.14); color: rgba(255,255,255,0.92); border: 1px solid rgba(255, 51, 51, 0.35); }
+        #tc-help.active { background: rgba(255, 51, 51, 0.95); color: #fff; box-shadow: 0 0 18px rgba(255, 51, 51, 0.25); }
+        #tc-help:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        #team-channel .tc-body { flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: #00d2ff transparent; }
+        .tc-msg { max-width: 92%; padding: 9px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45; border: 1px solid rgba(0,210,255,0.25); background: rgba(0,210,255,0.10); color: #e6f7ff; }
+        .tc-msg.me { align-self: flex-end; border-color: rgba(57,255,20,0.25); background: rgba(57,255,20,0.10); color: #ccffcc; }
+        .tc-meta { font-size: 11px; opacity: 0.85; margin-bottom: 4px; color: rgba(255,255,255,0.8); }
+        
+
+        #team-channel .tc-footer { padding: 12px; border-top: 1px solid rgba(0,210,255,0.22); display: flex; gap: 10px; align-items: center; }
+        #tc-input { flex: 1; background: rgba(0,0,0,0.45); border: 1px solid rgba(0,210,255,0.35); color: #fff; padding: 10px 10px; border-radius: 10px; outline: none; }
+        #tc-input:focus { border-color: rgba(57,255,20,0.6); }
+        .tc-btn { border: none; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-weight: 900; letter-spacing: 1px; }
+        #tc-send { background: #00d2ff; color: #001018; }
+        #tc-send:disabled { opacity: 0.6; cursor: not-allowed; }
+
+
+        /* 顶部 HUD */
+        .hud-header { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0, 15, 25, 0.9); border: 1px solid #39ff14; box-shadow: 0 0 20px rgba(57,255,20,0.3); border-radius: 4px; padding: 12px 40px; z-index: 10; text-align: center; backdrop-filter: blur(8px); pointer-events: none;}
+        .hud-header h1 { margin: 0; font-size: 20px; color: #39ff14; text-shadow: 0 0 10px #39ff14; letter-spacing: 2px; font-weight: 900; }
+        .hud-header p { margin: 5px 0 0 0; font-size: 13px; color: #ddd; }
+
+        /* 阵营选择 */
+        #faction-selector { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; backdrop-filter: blur(15px); transition: opacity 0.6s ease; }
+        #faction-selector h2 { font-size: 32px; letter-spacing: 4px; margin-bottom: 50px; color: #fff; text-shadow: 0 0 15px rgba(255,255,255,0.3); }
+        .faction-cards { display: flex; gap: 40px; }
+        .card { width: 180px; height: 260px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.4s; background: rgba(30,30,30,0.5); }
+        .card.red { border: 2px solid #ff3333; } .card.red:hover { box-shadow: 0 0 50px rgba(255,51,51,0.7); transform: translateY(-10px); }
+        .card.red h3 { color: #ff3333; font-size: 26px; margin: 10px 0;}
+        .card.blue { border: 2px solid #00d2ff; } .card.blue:hover { box-shadow: 0 0 50px rgba(0,210,255,0.7); transform: translateY(-10px); }
+        .card.blue h3 { color: #00d2ff; font-size: 26px; margin: 10px 0;}
+        .card p { font-size: 13px; color: #bbb; text-align: center; padding: 0 10px; }
+
+        /* 底部地标信息面板 */
+        #info-panel { position: absolute; bottom: -400px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 450px; background: rgba(5, 10, 15, 0.98); border-top: 4px solid #39ff14; border-radius: 16px 16px 0 0; padding: 25px; z-index: 20; box-shadow: 0 -15px 50px rgba(0,0,0,0.9); transition: bottom 0.5s cubic-bezier(0.075, 0.82, 0.165, 1); }
+        #info-panel.active { bottom: 0; }
+        .close-btn { position: absolute; right: 20px; top: 20px; cursor: pointer; color: #888; font-size: 30px; line-height: 1; } .close-btn:hover { color: #fff; }
+        .tag { display: inline-block; padding: 5px 12px; font-size: 11px; border-radius: 4px; margin-bottom: 12px; font-weight: bold; border: 1px solid currentColor;}
+        .tag-core { background: rgba(255,51,51,0.15); color: #ff3333; } .tag-culture { background: rgba(0,210,255,0.15); color: #00d2ff; } .tag-food { background: rgba(255,180,0,0.15); color: #ffb400; }
+        #panel-title { margin: 0 0 12px 0; font-size: 24px; color: #fff; font-weight: 900; }
+        #panel-desc { font-size: 15px; color: #ccc; line-height: 1.7; margin-bottom: 25px;}
+        .capture-btn { width: 100%; padding: 16px; border: none; border-radius: 8px; background: linear-gradient(135deg, #39ff14, #008f11); color: #000; font-size: 16px; font-weight: 900; cursor: pointer; letter-spacing: 2px; box-shadow: 0 4px 15px rgba(57,255,20,0.3); transition: all 0.2s;}
+        .capture-btn:hover { filter: brightness(1.2); }
+
+        /* AI 占领悬浮窗 (中心) */
+        .modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); width: 90%; max-width: 400px; height: 500px; background: rgba(10, 15, 25, 0.95); border: 2px solid #00d2ff; border-radius: 12px; box-shadow: 0 0 40px rgba(0,210,255,0.4); z-index: 100; display: none; flex-direction: column; opacity: 0; transition: all 0.3s ease; backdrop-filter: blur(10px); }
+        .modal.active { display: flex; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        .chat-header { padding: 15px; border-bottom: 1px solid rgba(0,210,255,0.3); display: flex; justify-content: space-between; align-items: center; background: rgba(0,210,255,0.1); border-radius: 12px 12px 0 0; }
+        .chat-header h3 { margin: 0; font-size: 15px; color: #00d2ff; display: flex; align-items: center; gap: 8px; }
+        .chat-header h3::before { content: ''; display: block; width: 10px; height: 10px; background: #00d2ff; border-radius: 50%; box-shadow: 0 0 10px #00d2ff; animation: pulse 1.5s infinite; }
+        .chat-close { cursor: pointer; font-size: 24px; color: #00d2ff; line-height: 1; }
+        .chat-body { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; scrollbar-width: thin; scrollbar-color: #00d2ff transparent;}
+        .msg { max-width: 85%; padding: 10px 14px; border-radius: 8px; font-size: 14px; line-height: 1.5; word-wrap: break-word;}
+        .msg.ai { align-self: flex-start; background: rgba(0, 210, 255, 0.15); border: 1px solid rgba(0, 210, 255, 0.3); color: #e6f7ff; border-bottom-left-radius: 0; }
+        .msg.user { align-self: flex-end; background: rgba(57, 255, 20, 0.15); border: 1px solid rgba(57, 255, 20, 0.3); color: #ccffcc; border-bottom-right-radius: 0; }
+        .msg.loading { align-self: flex-start; background: transparent; border: none; color: #00d2ff; font-style: italic; font-size: 13px;}
+        .chat-footer { padding: 15px; border-top: 1px solid rgba(0,210,255,0.3); display: flex; gap: 10px; }
+        .chat-input { flex: 1; background: rgba(0,0,0,0.5); border: 1px solid #00d2ff; color: #fff; padding: 10px; border-radius: 6px; outline: none; transition: border 0.3s;}
+        .chat-input:focus { border-color: #39ff14; }
+        .chat-send { background: #00d2ff; color: #000; border: none; padding: 0 20px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s;}
+        .chat-send:hover { background: #39ff14; }
+
+        /* 右下角全局 AI 导游悬浮球与路线规划窗 */
+        #fab-planner { position: fixed; bottom: 30px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #cc00ff, #00d2ff); box-shadow: 0 0 20px rgba(204,0,255,0.6); z-index: 90; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 24px; animation: float 3s ease-in-out infinite, pulse-fab 2s infinite; border: 2px solid rgba(255,255,255,0.5); }
+        #fab-planner::after { content: '峡谷向导'; position: absolute; bottom: -20px; font-size: 12px; font-weight: bold; color: #fff; text-shadow: 0 0 5px #000, 0 0 10px #cc00ff; white-space: nowrap; }
+        #fab-planner:hover { transform: scale(1.1); }
+
+        #global-planner-modal { position: fixed; bottom: 110px; right: 20px; width: 340px; height: 480px; background: rgba(15, 10, 25, 0.95); border: 2px solid #cc00ff; border-radius: 12px; box-shadow: 0 0 30px rgba(204,0,255,0.3); z-index: 100; display: none; flex-direction: column; opacity: 0; transition: all 0.3s ease; transform: translateY(20px); backdrop-filter: blur(10px);}
+        #global-planner-modal.active { display: flex; opacity: 1; transform: translateY(0); }
+        #global-planner-modal .chat-header { background: rgba(204,0,255,0.15); border-bottom-color: rgba(204,0,255,0.4); }
+        #global-planner-modal .chat-header h3 { color: #e680ff; }
+        #global-planner-modal .chat-header h3::before { background: #cc00ff; box-shadow: 0 0 10px #cc00ff; }
+        #global-planner-modal .chat-close { color: #e680ff; }
+        #global-planner-modal .msg.ai { background: rgba(204,0,255,0.15); border-color: rgba(204,0,255,0.3); color: #f2ccff; }
+        #global-planner-modal .chat-input { border-color: #cc00ff; }
+        #global-planner-modal .chat-send { background: #cc00ff; color: #fff; }
+        #global-planner-modal .chat-send:hover { background: #e680ff; }
+        .route-card { background: rgba(0,0,0,0.4); border: 1px solid rgba(204,0,255,0.4); border-radius: 6px; padding: 10px; margin-top: 8px; font-size: 13px; color: #ddd; }
+        .route-card strong { color: #e680ff; display: block; margin-bottom: 5px; margin-top: 5px;}
+
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; box-shadow: 0 0 15px currentColor; } 100% { opacity: 0.5; } }
+        @keyframes pulse-fab { 0% { box-shadow: 0 0 10px rgba(204,0,255,0.4); } 50% { box-shadow: 0 0 25px rgba(204,0,255,1); } 100% { box-shadow: 0 0 10px rgba(204,0,255,0.4); } }
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } }
+    </style>
+</head>
+<body>
+    <div id="faction-selector">
+        <h2>— 请选择你的远征阵营 —</h2>
+        <div class="faction-cards">
+            <div class="card red" onclick="joinFaction('狼队', 'red')"><h3>🔴 狼队</h3><p>生而无畏，战至终章</p></div>
+            <div class="card blue" onclick="joinFaction('KSG', 'blue')"><h3>🔵 KSG</h3><p>乘梦破浪，且听龙吟</p></div>
+        </div>
+    </div>
+
+    <div id="map-container"></div>
+    <div class="hud-header">
+        <h1>2026 KPL 春决 · 海口全城阵营战</h1>
+        <p id="player-status">等待阵营网络接入...</p>
+    </div>
+
+    <div id="team-channel">
+        <div class="tc-header">
+            <div class="tc-title">队伍频道</div>
+            <div class="tc-badges">
+                <span id="tc-online" class="tc-badge offline">在线：--</span>
+            </div>
+        </div>
+        <div class="tc-body" id="tc-body"></div>
+        <div class="tc-footer">
+            <input id="tc-input" type="text" placeholder=">_ 输入讯息…" onkeypress="if(event.key==='Enter') tcSendText()" />
+            <button class="tc-btn" id="tc-help" onclick="tcToggleHelp()">求助</button>
+            <button class="tc-btn" id="tc-send" onclick="tcSendText()">发送</button>
+        </div>
+    </div>
+
+    <div id="info-panel">
+        <span class="close-btn" onclick="closePanel()">×</span>
+        <span id="panel-tag" class="tag">未分类</span>
+        <h3 id="panel-title">加载中...</h3>
+        <p id="panel-desc">数据加载中...</p>
+        <button class="capture-btn" id="capture-btn" onclick="openCaptureChat()">连接阵营智能体</button>
+    </div>
+
+    <div id="ai-chat-modal" class="modal">
+        <div class="chat-header">
+            <h3 id="chat-title">AI 守卫连线中...</h3>
+            <span class="chat-close" onclick="closeCaptureChat()">×</span>
+        </div>
+        <div class="chat-body" id="chat-box"></div>
+        <div class="chat-footer">
+            <input type="text" id="chat-input" class="chat-input" placeholder="输入口号验证身份..." onkeypress="if(event.key==='Enter') sendCaptureMessage()">
+            <button class="chat-send" onclick="sendCaptureMessage()">发送</button>
+        </div>
+    </div>
+
+    <div id="fab-planner" onclick="togglePlanner()">🤖</div>
+
+    <div id="global-planner-modal">
+        <div class="chat-header">
+            <h3>峡谷本地通 Agent</h3>
+            <span class="chat-close" onclick="togglePlanner()">×</span>
+        </div>
+        <div class="chat-body" id="planner-chat-box">
+            <div class="msg ai">召唤师你好！我是腾讯元器驱动的“海口本地通”。<br><br>想看比赛顺便玩转海口？告诉我你的行程天数和偏好（比如：想吃海鲜、想拍美照），我立刻为你生成专属的 CityWalk 上分路线！</div>
+        </div>
+        <div class="chat-footer">
+            <input type="text" id="planner-input" class="chat-input" placeholder="例：我只有2天，想吃美食和看决赛..." onkeypress="if(event.key==='Enter') sendPlannerMessage()">
+            <button class="chat-send" onclick="sendPlannerMessage()">发送</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // ⚠️ 核心配置区：接入腾讯元器真实 API
+        // ==========================================
+        // ⚠️ 不要在前端写入真实密钥：鉴权由 Vite 代理(/yuanqi-api)在服务端注入
+        // 官方 OpenAPI 约定：请求体里的 assistant_id 直接填写智能体的 appid
+        const YUANQI_AGENT_ID = "2046207601798965056";       // 智能体 appid（用于请求体 assistant_id）
+
+        // ==========================================
+        // ⚡ 地图赛博夜效果：请使用“个性化底图样式(mapStyleId)”点亮道路
+        // ==========================================
+        // 说明：道路要“贴合真实路网”只能靠底图样式去改 road 图层，手画折线一定会丑。
+        // 这里填你在腾讯位置服务控制台创建的个性化样式 ID；留空则使用默认样式。
+        const TMAP_STYLE_ID = "";
+
+        // ==========================================
+        // 🛰️ 队伍频道：Supabase 实时通讯 (可选)
+        // ==========================================
+        const SUPABASE_URL = "";
+        const SUPABASE_ANON_KEY = "";
+        const SUPABASE_CHAT_TABLE = "channel_messages";
+        
+
+        // 部署版：前端不再携带密钥，改为调用我们在 Vercel 上的 Serverless 路由 `/api/yuanqi`
+        // 统一的真实 API 请求函数（公网部署版）
+        async function fetchTencentYuanqi(systemPrompt, userText) {
+            const proxyUrl = `/api/yuanqi`;
+
+            const contentText = `${systemPrompt}\n玩家输入: ${userText}`;
+
+            const payload = {
+                assistant_id: YUANQI_AGENT_ID,
+                user_id: "player_001",
+                stream: false,
+                messages: [
+                    {
+                        role: "user",
+                        content: [ { type: "text", text: contentText } ],
+                    }
+                ]
+            };
+
+            try {
+                const response = await fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`云端接口报错，状态码: ${response.status}`);
+                }
+
+                const data = await response.json();
+                return data?.choices?.[0]?.message?.content || "AI 似乎睡着了，没有返回内容。";
+            } catch (error) {
+                console.error("API 请求失败:", error);
+                return `[系统提示] 网络连线失败。错误详情: ${error?.message || String(error)}`;
+            }
+        }
+
+        // ================= 队伍频道：UI + (Supabase 或离线 Demo) =================
+        const TC_DEMO_BUS = 'tc_demo_bus_v1';
+        const TC_DEMO_PRESENCE_PREFIX = 'tc_demo_presence_v1:';
+        const TC_DEMO_MESSAGES_PREFIX = 'tc_demo_messages_v1:';
+        const TC_DEMO_PRESENCE_TTL_MS = 6500;
+        const TC_DEMO_HEARTBEAT_MS = 2000;
+
+        const tcState = {
+            enabled: false,
+            demo: false,
+            helpOn: false,
+            seenMsgIds: new Set(),
+            userId: null,
+            displayName: null,
+            channelKey: null,
+            sb: null,
+            sbRoom: null,
+            sbPresence: null,
+            demoBus: null,
+            demoTimer: null,
+            demoBaseCount: null
+        };
+
+        function tcEnsureUser() {
+            const baseKey = 'tc_base_id';
+            let baseId = localStorage.getItem(baseKey);
+            if (!baseId) {
+                baseId = `b_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+                localStorage.setItem(baseKey, baseId);
+            }
+
+            const connKey = 'tc_conn_id';
+            let connId = sessionStorage.getItem(connKey);
+            if (!connId) {
+                connId = `u_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+                sessionStorage.setItem(connKey, connId);
+            }
+
+            tcState.userId = connId;
+            tcState.displayName = myFaction ? `${myFaction}·${tcState.userId.slice(-4)}` : `访客·${tcState.userId.slice(-4)}`;
+        }
+
+        function tcResolveChannelKey() {
+            if (myFaction === '狼队') return 'team_wolves';
+            if (myFaction === 'KSG') return 'team_ksg';
+            return 'team_unknown';
+        }
+
+        function tcSetEnabled(enabled, reasonText) {
+            tcState.enabled = !!enabled;
+            const online = document.getElementById('tc-online');
+            const send = document.getElementById('tc-send');
+            const help = document.getElementById('tc-help');
+            send.disabled = !tcState.enabled;
+            help.disabled = !tcState.enabled;
+            online.classList.toggle('offline', !tcState.enabled);
+            online.innerText = tcState.enabled ? '在线：--' : (reasonText ? `离线：${reasonText}` : '离线：未接入');
+        }
+
+        function tcToggleHelp(force) {
+            tcState.helpOn = typeof force === 'boolean' ? force : !tcState.helpOn;
+            const btn = document.getElementById('tc-help');
+            btn.classList.toggle('active', tcState.helpOn);
+            btn.innerText = tcState.helpOn ? '求助✓' : '求助';
+            const input = document.getElementById('tc-input');
+            input.placeholder = tcState.helpOn ? '【求助】>_ 输入讯息…' : '>_ 输入讯息…';
+        }
+
+        function tcDemoPresenceKey(channelKey) {
+            return `${TC_DEMO_PRESENCE_PREFIX}${channelKey}`;
+        }
+
+        function tcDemoMessagesKey(channelKey) {
+            return `${TC_DEMO_MESSAGES_PREFIX}${channelKey}`;
+        }
+
+        function tcDemoReadJson(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                if (!raw) return fallback;
+                return JSON.parse(raw);
+            } catch {
+                return fallback;
+            }
+        }
+
+        function tcDemoWriteJson(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch {}
+        }
+
+        function tcDemoPrunePresence(presenceMap) {
+            const now = Date.now();
+            let changed = false;
+            for (const [uid, entry] of Object.entries(presenceMap || {})) {
+                const ts = Number(entry?.ts || 0);
+                if (!ts || now - ts > TC_DEMO_PRESENCE_TTL_MS) {
+                    delete presenceMap[uid];
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
+        function tcDemoUpdateOnlineCount() {
+            const channelKey = tcState.channelKey;
+            if (!channelKey) return;
+            const key = tcDemoPresenceKey(channelKey);
+            const presenceMap = tcDemoReadJson(key, {});
+            const pruned = tcDemoPrunePresence(presenceMap);
+            if (pruned) tcDemoWriteJson(key, presenceMap);
+            let count = Object.keys(presenceMap || {}).length || 1;
+
+            // ==========================================
+            // 🌟 优化点 1：稳定且逼真的高在线人数模拟
+            // ==========================================
+            if (tcState.demo) {
+                // 如果还没有基础人数，生成一个 135~175 之间的随机初始值
+                if (!tcState.demoBaseCount) {
+                    tcState.demoBaseCount = 135 + Math.floor(Math.random() * 40); 
+                }
+                // 每次心跳（2秒）产生 -1 到 +2 的微小波动，模拟人员进出，而不是剧烈跳动
+                tcState.demoBaseCount += (Math.floor(Math.random() * 4) - 1);
+                count = Math.max(count, tcState.demoBaseCount);
+            }
+            document.getElementById('tc-online').innerText = `在线：${count}`;
+        }
+
+        function tcDemoHeartbeat() {
+            const channelKey = tcState.channelKey;
+            if (!channelKey) return;
+
+            const key = tcDemoPresenceKey(channelKey);
+            const presenceMap = tcDemoReadJson(key, {});
+            tcDemoPrunePresence(presenceMap);
+            presenceMap[tcState.userId] = { name: tcState.displayName, faction: myFaction || '', ts: Date.now() };
+            tcDemoWriteJson(key, presenceMap);
+            tcDemoUpdateOnlineCount();
+            try { tcState.demoBus?.postMessage({ t: 'presence', channelKey }); } catch {}
+        }
+
+        function tcDemoRemovePresence() {
+            const channelKey = tcState.channelKey;
+            if (!channelKey) return;
+            const key = tcDemoPresenceKey(channelKey);
+            const presenceMap = tcDemoReadJson(key, {});
+            if (presenceMap && presenceMap[tcState.userId]) {
+                delete presenceMap[tcState.userId];
+                tcDemoWriteJson(key, presenceMap);
+                try { tcState.demoBus?.postMessage({ t: 'presence', channelKey }); } catch {}
+            }
+        }
+
+        function tcDemoLoadHistory() {
+            const body = document.getElementById('tc-body');
+            body.innerHTML = '';
+            tcState.seenMsgIds.clear();
+            const key = tcDemoMessagesKey(tcState.channelKey);
+            const list = tcDemoReadJson(key, []);
+            for (const msg of (list || [])) {
+                if (!msg?.id || tcState.seenMsgIds.has(msg.id)) continue;
+                tcState.seenMsgIds.add(msg.id);
+                tcAppendMessage({
+                    from: msg.from,
+                    name: msg.name,
+                    text: msg.text,
+                    createdAt: msg.createdAt,
+                });
+            }
+            
+            // ==========================================
+            // 🌟 优化点 2：抹除无后端提示，改为沉浸式迎宾语
+            // ==========================================
+            if (!list || list.length === 0) {
+                const factionName = myFaction || '指挥中心';
+                tcAppendMessage({ 
+                    from: 'sys', 
+                    name: 'SYSTEM', 
+                    text: `【加密网络已连线】欢迎加入 ${factionName} 专属频道。准备好迎接春决了吗？`, 
+                    createdAt: Date.now() 
+                });
+            }
+        }
+
+        function tcDemoAppendAndPersist(msg) {
+            const key = tcDemoMessagesKey(tcState.channelKey);
+            const list = tcDemoReadJson(key, []);
+            list.push(msg);
+            while (list.length > 40) list.shift();
+            tcDemoWriteJson(key, list);
+        }
+
+        function tcDemoReceiveText(msg) {
+            if (!msg?.id || tcState.seenMsgIds.has(msg.id)) return;
+            tcState.seenMsgIds.add(msg.id);
+            tcAppendMessage({ from: msg.from, name: msg.name, text: msg.text, createdAt: msg.createdAt });
+        }
+
+        function tcStartDemoMode() {
+            tcState.demo = true;
+            tcSetEnabled(true);
+            tcState.channelKey = tcResolveChannelKey();
+
+            try {
+                tcState.demoBus = new BroadcastChannel(TC_DEMO_BUS);
+                tcState.demoBus.onmessage = (ev) => {
+                    const data = ev?.data || {};
+                    if (data.channelKey && data.channelKey !== tcState.channelKey) return;
+                    if (data.t === 'presence') tcDemoUpdateOnlineCount();
+                    if (data.t === 'msg') tcDemoReceiveText(data.msg);
+                };
+            } catch {
+                tcState.demoBus = null;
+            }
+
+            window.addEventListener('storage', (ev) => {
+                if (!ev?.key) return;
+                if (ev.key === tcDemoPresenceKey(tcState.channelKey)) tcDemoUpdateOnlineCount();
+                if (ev.key === tcDemoMessagesKey(tcState.channelKey)) tcDemoLoadHistory();
+            });
+
+            window.addEventListener('beforeunload', () => {
+                try { tcDemoRemovePresence(); } catch {}
+                try { tcState.demoBus?.close(); } catch {}
+            });
+
+            tcDemoLoadHistory();
+            tcDemoHeartbeat();
+            tcState.demoTimer = setInterval(tcDemoHeartbeat, TC_DEMO_HEARTBEAT_MS);
+        }
+
+        function tcAppendMessage({ from, name, text, createdAt }) {
+            const body = document.getElementById('tc-body');
+            const el = document.createElement('div');
+            el.className = 'tc-msg' + (from === tcState.userId ? ' me' : '');
+
+            const meta = document.createElement('div');
+            meta.className = 'tc-meta';
+            const timeText = createdAt ? new Date(createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '';
+            meta.innerText = `${name || '匿名'}${timeText ? ' · ' + timeText : ''}`;
+            el.appendChild(meta);
+
+            if (text) {
+                const content = document.createElement('div');
+                content.innerText = text;
+                el.appendChild(content);
+            }
+
+            body.appendChild(el);
+            body.scrollTop = body.scrollHeight;
+        }
+
+        async function tcInitSupabase() {
+            tcEnsureUser();
+            const panel = document.getElementById('team-channel');
+            panel.classList.add('active');
+
+            if (!SUPABASE_URL || !SUPABASE_ANON_KEY || typeof supabase === 'undefined') {
+                tcSetEnabled(true);
+                tcToggleHelp(false);
+                tcStartDemoMode();
+                return;
+            }
+
+            try {
+                const { createClient } = supabase;
+                tcState.sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                tcSetEnabled(true);
+                await tcSwitchChannel('team');
+            } catch (e) {
+                tcSetEnabled(false, '中继异常');
+                tcAppendMessage({ from: 'sys', name: 'SYSTEM', text: `通讯中继初始化失败：${String(e?.message || e)}`, createdAt: Date.now() });
+            }
+        }
+
+        async function tcTearDownRealtime() {
+            try {
+                if (tcState.sbRoom) await tcState.sbRoom.unsubscribe();
+            } catch {}
+            try {
+                if (tcState.sbPresence) await tcState.sbPresence.unsubscribe();
+            } catch {}
+            tcState.sbRoom = null;
+            tcState.sbPresence = null;
+        }
+
+        async function tcSwitchChannel(kind) {
+            tcState.channelKey = tcResolveChannelKey();
+            const body = document.getElementById('tc-body');
+            body.innerHTML = '';
+
+            tcAppendMessage({ from: 'sys', name: 'SYSTEM', text: `已接入频道：${tcState.channelKey}（赛博链路建立中…）`, createdAt: Date.now() });
+
+            if (!tcState.enabled || !tcState.sb) return;
+
+            await tcTearDownRealtime();
+
+            tcState.sbPresence = tcState.sb.channel(`presence:${tcState.channelKey}`, { config: { presence: { key: tcState.userId } } });
+            tcState.sbPresence
+                .on('presence', { event: 'sync' }, () => {
+                    const state = tcState.sbPresence.presenceState();
+                    let count = 0;
+                    for (const k of Object.keys(state)) count += state[k].length;
+                    document.getElementById('tc-online').innerText = `在线：${count}`;
+                })
+                .subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') {
+                        await tcState.sbPresence.track({ user_id: tcState.userId, name: tcState.displayName, faction: myFaction || '' });
+                    }
+                });
+
+            tcState.sbRoom = tcState.sb.channel(`room:${tcState.channelKey}`);
+            tcState.sbRoom
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: SUPABASE_CHAT_TABLE, filter: `channel=eq.${tcState.channelKey}` }, (payload) => {
+                    const row = payload?.new || {};
+                    if (row.type && row.type !== 'text') return;
+                    tcAppendMessage({
+                        from: row.user_id,
+                        name: row.display_name,
+                        text: row.content,
+                        createdAt: row.created_at || Date.now(),
+                    });
+                })
+                .subscribe();
+
+            try {
+                const { data, error } = await tcState.sb
+                    .from(SUPABASE_CHAT_TABLE)
+                    .select('id,channel,user_id,display_name,type,content,audio_url,created_at')
+                    .eq('channel', tcState.channelKey)
+                    .order('created_at', { ascending: true })
+                    .limit(30);
+                if (error) throw error;
+                body.innerHTML = '';
+                for (const row of (data || [])) {
+                    if (row.type && row.type !== 'text') continue;
+                    tcAppendMessage({
+                        from: row.user_id,
+                        name: row.display_name,
+                        text: row.content,
+                        createdAt: row.created_at,
+                    });
+                }
+                if (!data || data.length === 0) {
+                    tcAppendMessage({ from: 'sys', name: 'SYSTEM', text: '频道无历史讯息。发一句“收到”试试。', createdAt: Date.now() });
+                }
+            } catch (e) {
+                tcAppendMessage({ from: 'sys', name: 'SYSTEM', text: `历史讯息读取失败：${String(e?.message || e)}`, createdAt: Date.now() });
+            }
+        }
+
+        async function tcSendText() {
+            if (!tcState.enabled || !tcState.channelKey) return;
+            const input = document.getElementById('tc-input');
+            const text = (input.value || '').trim();
+            if (!text) return;
+            input.value = '';
+
+            const finalText = tcState.helpOn ? `【求助】 ${text}` : text;
+
+            if (tcState.demo) {
+                const msg = {
+                    id: `${tcState.userId}_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 6)}`,
+                    channelKey: tcState.channelKey,
+                    from: tcState.userId,
+                    name: tcState.displayName,
+                    text: finalText,
+                    createdAt: Date.now(),
+                };
+                tcDemoAppendAndPersist(msg);
+                tcDemoReceiveText(msg);
+                try { tcState.demoBus?.postMessage({ t: 'msg', channelKey: tcState.channelKey, msg }); } catch {}
+                return;
+            }
+
+            if (!tcState.sb) return;
+            try {
+                const { error } = await tcState.sb.from(SUPABASE_CHAT_TABLE).insert({
+                    channel: tcState.channelKey,
+                    faction: myFaction || '',
+                    user_id: tcState.userId,
+                    display_name: tcState.displayName,
+                    type: 'text',
+                    content: finalText,
+                });
+                if (error) throw error;
+            } catch (e) {
+                tcAppendMessage({ from: 'sys', name: 'SYSTEM', text: `发送失败：${String(e?.message || e)}`, createdAt: Date.now() });
+            }
+        }
+
+        // ==========================================
+        // 以下为原版地图和交互逻辑 (已接入真实 AI)
+        // ==========================================
+        let myFaction = "";
+        let currentPoi = null;
+        let map;
+        let isOccupied = false;
+        let captureQuiz = null; // { question: string }
+        const occupiedPoiIds = new Set();
+
+        function extractFirstJsonObject(text) {
+            if (!text) return null;
+            const match = String(text).match(/\{[\s\S]*\}/);
+            if (!match) return null;
+            try { return JSON.parse(match[0]); } catch { return null; }
+        }
+
+        function sanitizePoiDescForQuiz(desc) {
+            const raw = String(desc || '').trim();
+            if (!raw) return '';
+
+            // 这些简介里有大量“游戏化文案”，会把模型带偏成“X 在游戏里的作用”。
+            // 出题时先尽量去掉这类词，避免硬融合。
+            const blacklist = [
+                'Buff', 'buff', '技能', '重伤', '神装', '刺客', '进场', '回血', '生命回复',
+                '龙坑', '团战', '输出', '战力', '反杀', '峡谷', '赛场', 'KPL', '王者',
+                '运营', 'BGM', '经验瓶', '等级差距', '真实伤害', '护盾', '复盘', '指挥'
+            ];
+
+            let cleaned = raw;
+            for (const word of blacklist) {
+                cleaned = cleaned.replaceAll(word, '');
+            }
+
+            cleaned = cleaned
+                .replace(/[“”"'`]/g, '')
+                .replace(/[！!？?。；;，,、】【\[\]]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            return cleaned;
+        }
+
+        function hashStringFNV1a(str) {
+            let hash = 0x811c9dc5;
+            const s = String(str || '');
+            for (let i = 0; i < s.length; i++) {
+                hash ^= s.charCodeAt(i);
+                hash = Math.imul(hash, 0x01000193);
+            }
+            return hash >>> 0;
+        }
+
+        function pickQuizTopicForPoi({ poiId, poiType, cleanedDesc }) {
+            // 主题：A=电竞圈入门常识；B=历史人文/风俗常识
+            // 每天对同一个 POI 稳定随机（避免反复打开题目每次都变）。
+            const descOk = String(cleanedDesc || '').trim().length >= 8;
+            if (!descOk) return 'A';
+
+            const type = String(poiType || '');
+            let probB = 0.35;
+            if (type === 'culture') probB = 0.80;
+            else if (type === 'core') probB = 0.70;
+            else if (type === 'food') probB = 0.35;
+
+            const today = new Date().toISOString().slice(0, 10);
+            const seed = `${today}|${myFaction || ''}|${poiId || ''}|${type}`;
+            const r = (hashStringFNV1a(seed) % 10000) / 10000;
+            return r < probB ? 'B' : 'A';
+        }
+
+        async function generateCaptureQuestion(poi) {
+            const poiType = String(poi?.type || '');
+            const cleanedDesc = sanitizePoiDescForQuiz(poi?.desc || '');
+            const chosenTopic = pickQuizTopicForPoi({ poiId: poi?.id, poiType, cleanedDesc });
+
+            const systemPrompt = `你是“据点占领考官”。你将出一道【单题】。\n必须：自然、常识向、可判定、别硬融合。\n\n你必须【严格遵守】玩家输入里给定的“本题主题：A/B”，不得擅自改成另一类，也不得混搭。\n\n出题主题（严格二选一，不要混搭）：\nA) 电竞圈入门常识：让不玩王者的人也有机会答对（规则/术语/位置职责/赛事常识）。\nB) 历史人文/风俗常识：只根据给定【清洗后的简介】出题；如果信息不足就改出 A 类。\n\n硬性要求：\n1) 简答题，答案 3-12 个字或 1 句话；\n2) 禁止把 POI 当成“游戏物品/技能”，禁止问“X 在游戏中的作用是什么”；\n3) 禁止用 Buff/技能/重伤/神装/能量包 等游戏化比喻来出题；\n4) 若本地信息不足：改出 A 类电竞入门题；\n5) 只输出题目正文，不要答案，不要解释。\n\n反例（绝对不要出）：\n- “炸排骨在游戏中的作用是什么？”\n- “某某小吃的技能是什么？”`;
+
+            const userText = `本题主题：${chosenTopic}\nPOI：${poi?.title || ''}\n类型：${poiType}\n清洗后的简介（可能为空）：${cleanedDesc}\n阵营：${myFaction || ''}`;
+            const question = await fetchTencentYuanqi(systemPrompt, userText);
+            return (question || '').trim();
+        }
+
+        async function judgeCaptureAnswer({ poi, question, answer }) {
+            const systemPrompt = `你是严格的“判题官”。根据【题目】与【地点信息】判断【用户答案】是否正确/可接受。\n只输出严格 JSON（不要任何额外文本）：\n{"correct":true/false,"feedback":"..."}\n反馈 feedback 要求：\n- 若正确：简短表扬 + 补充 1 句与【题目主题一致】的知识点（不超过40字，不要强行融合电竞/文旅）\n- 若错误：指出缺失关键点 + 给 1 句提示（不要直接给标准答案）\n判题要宽松处理同义表述/近义词，但不要随便判对；如果题目本身信息不足导致无法判断，要偏向判错并提示换个说法。`;
+            const userText = `【地点】${poi?.title || ''}\n【简介】${poi?.desc || ''}\n【题目】${question || ''}\n【用户答案】${answer || ''}`;
+            const raw = await fetchTencentYuanqi(systemPrompt, userText);
+            const obj = extractFirstJsonObject(raw);
+            if (!obj || typeof obj.correct !== 'boolean') {
+                return { correct: false, feedback: '判题结果解析失败，请再试一次（系统未收到规范JSON）。' };
+            }
+            return { correct: !!obj.correct, feedback: String(obj.feedback || '').trim() };
+        }
+
+        function getCrystalSvg(colorHex) {
+            const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 50"><defs><filter id="b"><feGaussianBlur stdDeviation="2"/></filter></defs><path d="M20 2 L38 20 L20 48 L2 20 Z" fill="${colorHex}" stroke="white" stroke-width="1.5" opacity="0.9"/><path d="M20 5 L33 20 L20 40 L7 20 Z" fill="white" opacity="0.3"/><circle cx="20" cy="20" r="5" fill="white" filter="url(#b)" opacity="0.8"/></svg>`;
+            return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+        }
+
+        function getGlowDotSvg(colorHex) {
+            const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><filter id="g"><feGaussianBlur stdDeviation="2.2"/></filter></defs><circle cx="16" cy="16" r="5" fill="${colorHex}" opacity="0.9"/><circle cx="16" cy="16" r="10" fill="${colorHex}" opacity="0.25" filter="url(#g)"/></svg>`;
+            return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+        }
+
+        function mulberry32(seed) {
+            let a = seed >>> 0;
+            return function() {
+                a += 0x6D2B79F5;
+                let t = a;
+                t = Math.imul(t ^ (t >>> 15), t | 1);
+                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            }
+        }
+
+        function joinFaction(name, color) {
+            myFaction = name;
+            const statusColor = color === 'red' ? '#ff3333' : '#00d2ff';
+            document.getElementById('player-status').innerHTML = `当前已接入：<span style="color:${statusColor};font-weight:900;">${name} 远征军</span>`;
+            document.getElementById('faction-selector').style.opacity = '0';
+            setTimeout(() => document.getElementById('faction-selector').style.display = 'none', 600);
+            tcInitSupabase();
+            initMap();
+        }
+
+        function initMap() {
+            const mapOptions = {
+                center: new TMap.LatLng(20.0350, 110.3300),
+                zoom: 12.5,
+                pitch: 55,
+                baseMap: { type: 'vector', features: ['base', 'building3d'] }
+            };
+            if (TMAP_STYLE_ID) {
+                mapOptions.mapStyleId = TMAP_STYLE_ID;
+            }
+            map = new TMap.Map(document.getElementById('map-container'), mapOptions);
+
+            const mapData = [
+                { id: 'wyh', lat: 20.0240, lng: 110.2080, title: '五源河体育场', type: 'core', tag: '⚔️ 终极水晶', tagClass: 'tag-core', desc: '春决巅峰战场。这里的每一寸草坪都曾见证过极限反杀，这是属于冠军的荣耀圣殿！' },
+                { id: 'qilou', lat: 20.0450, lng: 110.3400, title: '骑楼老街戏台', type: 'culture', tag: '🎭 琼剧·战歌', tagClass: 'tag-culture', desc: '国家级非遗琼剧。那高亢的唱腔就是海口版的赛场BGM，听一段，全队士气加满！' },
+                { id: 'shuixiang', lat: 20.0455, lng: 110.3415, title: '水巷口手作街', type: 'culture', tag: '🍵 老爸茶工艺', tagClass: 'tag-culture', desc: '体验海南非遗茶文化。慢工出细活，在这里叫个战术暂停，稳住心态。' },
+                { id: 'beilei', lat: 20.0440, lng: 110.3410, title: '海口贝雕馆', type: 'culture', tag: '🐚 贝雕·神装', tagClass: 'tag-culture', desc: '以贝为材，雕刻细入毫芒。这工艺就像神装成型前的最后一次打磨，细致入微。' },
+                { id: 'museum', lat: 20.0180, lng: 110.3700, title: '海南省博物馆', type: 'culture', tag: '📜 黎锦/椰雕', tagClass: 'tag-culture', desc: '这里封印着千年非遗。黎锦的经纬交织，一如战队缜密的运营思路，绝无破绽。' },
+                { id: 'art', lat: 20.0160, lng: 110.3650, title: '群众艺术馆', type: 'culture', tag: '🎵 海南八音', tagClass: 'tag-culture', desc: '八音齐鸣。这不仅是音乐，更是峡谷里五人团战的完美协奏，节奏感拉满。' },
+                { id: 'volcano', lat: 19.9300, lng: 110.2220, title: '火山口遗址公园', type: 'culture', tag: '🌋 熔岩之力', tagClass: 'tag-culture', desc: '万年火山口。感受大地自带的“真实伤害”，在这里打卡可为战队注入爆发性输出。' },
+                { id: 'f1', lat: 20.0380, lng: 110.3360, title: '泰龙城小吃街', type: 'food', tag: '🍲 经济发育路', tagClass: 'tag-food', desc: '海口人气最高的发育区。糟粕醋的酸辣是自带的“重伤”效果，吃完直接战力翻倍！' },
+                { id: 'f6', lat: 20.0410, lng: 110.3385, title: '亚妹海南粉', type: 'food', tag: '🍲 极速神装', tagClass: 'tag-food', desc: '海口老牌海南粉。动作要快，吸溜入喉，就像刺客进场一样快准狠。' },
+                { id: 'f8', lat: 20.0430, lng: 110.3405, title: '博爱路炸排骨', type: 'food', tag: '🍲 能量包', tagClass: 'tag-food', desc: '外焦里嫩的能量炸弹。每一个炸排骨都是一个经验瓶，瞬间拉开等级差距。' },
+                { id: 'f3', lat: 20.0458, lng: 110.3412, title: '辣汤饭老店', type: 'food', tag: '🍲 晨间Buff', tagClass: 'tag-food', desc: '本地人开启新一天的必点Buff。胡椒辣味入魂，能让你瞬间清醒，找回神级操作。' },
+                { id: 'f5', lat: 20.0445, lng: 110.3420, title: '恒兴发老爸茶', type: 'food', tag: '🍲 战术复盘区', tagClass: 'tag-food', desc: '一壶茶能坐一个下午。一边吃菠萝包，一边复盘上一局的龙坑团战，这就是松弛感。' },
+                { id: 'f2', lat: 20.0100, lng: 110.3300, title: '龙昆南椰子鸡', type: 'food', tag: '🍲 泉水补给站', tagClass: 'tag-food', desc: '海口必吃椰子鸡。清甜的汤底就是你的“回血包”，喝一口，状态全满！' },
+                { id: 'f7', lat: 20.0200, lng: 110.3350, title: '邓记清补凉', type: 'food', tag: '🍲 冰霜抗性', tagClass: 'tag-food', desc: '决赛火气大？来碗冰爽的清补凉。自带“冰霜护盾”，降火解腻，冷静指挥。' },
+                { id: 'f10', lat: 20.0150, lng: 110.3380, title: '临高烤乳猪', type: 'food', tag: '🍲 爆发伤害', tagClass: 'tag-food', desc: '皮脆肉嫩，爆发力十足。吃一口，你的伤害曲线直接垂直拉升！' },
+                { id: 'f11', lat: 20.0250, lng: 110.3320, title: '和乐蟹粥铺', type: 'food', tag: '🍲 持续回血', tagClass: 'tag-food', desc: '文火慢熬。这是那种持续性的“生命回复”，不仅暖胃，还能让你后期更有韧性。' },
+                { id: 'f4', lat: 19.9840, lng: 110.3420, title: '丁村海鲜广场', type: 'food', tag: '🍲 全图庆功宴', tagClass: 'tag-food', desc: '全图视野开阔，万人同吃海鲜。这就是赢球后该有的豪华庆功宴，气氛拉满。' },
+                { id: 'f9', lat: 20.0330, lng: 110.3620, title: '板桥路海鲜市集', type: 'food', tag: '🍲 自由贸易区', tagClass: 'tag-food', desc: '在这里你可以自由挑选“装备”。买最新鲜的海鲜，做最顶级的输出。' }
+            ];
+
+            // ================= 赛博夜：楼宇窗户灯火 =================
+            // 通过少量“灯点”叠加，模拟楼宇窗户亮起的氛围
+            const rnd = mulberry32(2046207601);
+            const lightGeometries = [];
+            let lightId = 0;
+            for (const poi of mapData) {
+                const count = poi.type === 'food' ? 7 : poi.type === 'culture' ? 5 : 10;
+                for (let i = 0; i < count; i++) {
+                    const lat = poi.lat + (rnd() - 0.5) * 0.01;
+                    const lng = poi.lng + (rnd() - 0.5) * 0.01;
+                    const styleId = rnd() > 0.55 ? 'light_cyan' : 'light_lime';
+                    lightGeometries.push({
+                        id: `light_${lightId++}`,
+                        styleId,
+                        position: new TMap.LatLng(lat, lng),
+                    });
+                }
+            }
+
+            new TMap.MultiMarker({
+                map,
+                styles: {
+                    light_cyan: new TMap.MarkerStyle({ width: 8, height: 8, anchor: { x: 4, y: 4 }, src: getGlowDotSvg('#00d2ff') }),
+                    light_lime: new TMap.MarkerStyle({ width: 7, height: 7, anchor: { x: 3.5, y: 3.5 }, src: getGlowDotSvg('#39ff14') }),
+                },
+                geometries: lightGeometries,
+            });
+
+            // markers 抽象为可重建的层，以便根据占领状态动态切换样式
+            let markers = null;
+            // 记录每个 POI 的占领方（示例：'狼队'、'KSG'）
+            const occupiedOwners = {};
+
+            function updateMarkers() {
+                try {
+                    // 清理旧图层（若 API 支持）
+                    try { markers && markers.remove && markers.remove(); } catch {}
+
+                    const geometries = mapData.map(poi => {
+                        let styleId = 'style_' + poi.type;
+                        if (!occupiedOwners[poi.id]) {
+                            // 将“菱形”样式（core / culture）改为中性黄色/绿色
+                            if (poi.type === 'core') styleId = 'style_core_neutral';
+                            else if (poi.type === 'culture') styleId = 'style_culture_neutral';
+                            else styleId = 'style_' + poi.type;
+                        } else {
+                            const owner = occupiedOwners[poi.id];
+                            if (owner === '狼队') styleId = 'style_' + poi.type + '_red';
+                            else if (owner === 'KSG') styleId = 'style_' + poi.type + '_blue';
+                            else styleId = 'style_' + poi.type;
+                        }
+                        return { id: poi.id, styleId, position: new TMap.LatLng(poi.lat, poi.lng), properties: poi };
+                    });
+
+                    markers = new TMap.MultiMarker({
+                        map: map,
+                        styles: {
+                            'style_core_neutral': new TMap.MarkerStyle({ width: 34, height: 44, anchor: { x: 17, y: 44 }, src: getCrystalSvg('rgba(255,235,59,0.85)') }),
+                            'style_culture_neutral': new TMap.MarkerStyle({ width: 28, height: 38, anchor: { x: 14, y: 38 }, src: getCrystalSvg('rgba(57,255,20,0.85)') }),
+                            'style_core_red': new TMap.MarkerStyle({ width: 34, height: 44, anchor: { x: 17, y: 44 }, src: getCrystalSvg('#ff3333') }),
+                            'style_culture_blue': new TMap.MarkerStyle({ width: 28, height: 38, anchor: { x: 14, y: 38 }, src: getCrystalSvg('#00d2ff') }),
+                            'style_food': new TMap.MarkerStyle({ width: 28, height: 38, anchor: { x: 14, y: 38 }, src: getCrystalSvg('#ffb400') })
+                        },
+                        geometries
+                    });
+
+                    // 绑定点击处理（重建后需重新绑定）
+                    markers.on && markers.on('click', function(evt) {
+                        const data = evt.geometry.properties;
+                        currentPoi = data;
+                        captureQuiz = null;
+                        isOccupied = occupiedPoiIds.has(data.id);
+
+                        document.getElementById('panel-tag').className = 'tag ' + data.tagClass;
+                        document.getElementById('panel-tag').innerText = data.tag;
+                        document.getElementById('panel-title').innerText = data.title;
+                        document.getElementById('panel-desc').innerText = data.desc;
+
+                        const btn = document.getElementById('capture-btn');
+                        if (isOccupied) {
+                            const owner = occupiedOwners[data.id] || null;
+                            btn.innerText = `✅ ${owner || ''} 已占领此地`;
+                            btn.style.background = 'linear-gradient(135deg, #39ff14, #008f11)';
+                            btn.style.color = '#000';
+                        } else {
+                            btn.innerText = `为 ${myFaction} 连线此地 AI`;
+                            btn.style.background = myFaction === '狼队' ? 'linear-gradient(135deg, #ff3333, #880000)' : 'linear-gradient(135deg, #00d2ff, #005577)';
+                            btn.style.color = '#fff';
+                        }
+
+                        document.getElementById('info-panel').classList.add('active');
+                        map.easeTo({ center: new TMap.LatLng(data.lat, data.lng), zoom: 14.5, duration: 800 });
+                        document.getElementById('global-planner-modal').classList.remove('active');
+                    });
+                } catch (e) {
+                    console.error('更新 markers 失败：', e);
+                }
+            }
+
+            // 暴露给全局以便外部（如 sendCaptureMessage）触发样式刷新
+            try { window.occupiedOwners = occupiedOwners; window.updateMarkers = updateMarkers; } catch {}
+            // 首次构建 markers
+            updateMarkers();
+
+            // 使用 let 以便后续根据缩放级别更新标签集合
+            let labels = new TMap.MultiLabel({
+                map: map,
+                styles: { 'label_style': new TMap.LabelStyle({ color: '#00d2ff', size: 13, offset: { x: 0, y: 25 }, fontWeight: '900', backgroundColor: 'transparent', padding: '2px 6px', borderRadius: '6px', border: '1px solid rgba(0,210,255,0.08)', textShadow: '0 0 8px rgba(0,210,255,0.6)' }) },
+                geometries: mapData.map(poi => ({ id: 'label_' + poi.id, styleId: 'label_style', position: new TMap.LatLng(poi.lat, poi.lng), content: poi.title }))
+            });
+
+            // 根据缩放级别选择性显示标签：
+            // zoom >= 13 : 显示全部标签
+            // 12 <= zoom < 13 : 仅显示 type === 'core' 的标签
+            // zoom < 12 : 隐藏所有标签
+            function updateLabelsByZoom() {
+                try {
+                    const z = Math.floor(map.getZoom ? map.getZoom() : 0);
+                    let geoms;
+                    if (z >= 13) {
+                        geoms = mapData.map(poi => ({ id: 'label_' + poi.id, styleId: 'label_style', position: new TMap.LatLng(poi.lat, poi.lng), content: poi.title }));
+                    } else if (z >= 12) {
+                        geoms = mapData.filter(p => p.type === 'core').map(poi => ({ id: 'label_' + poi.id, styleId: 'label_style', position: new TMap.LatLng(poi.lat, poi.lng), content: poi.title }));
+                    } else {
+                        geoms = [];
+                    }
+
+                    if (typeof labels.setGeometries === 'function') {
+                        labels.setGeometries(geoms);
+                    } else if (typeof labels.update === 'function') {
+                        labels.update({ geometries: geoms });
+                    } else {
+                        // 如果 API 不支持直接更新，则尝试销毁并重建（最不优但兼容）
+                        try { labels.remove && labels.remove(); } catch {}
+                        labels = new TMap.MultiLabel({ map: map, styles: { 'label_style': new TMap.LabelStyle({ color: '#00d2ff', size: 13, offset: { x: 0, y: 25 }, fontWeight: '900', backgroundColor: 'transparent', padding: '2px 6px', borderRadius: '6px', border: '1px solid rgba(0,210,255,0.08)', textShadow: '0 0 8px rgba(0,210,255,0.6)' }) }, geometries: geoms });
+                    }
+                } catch (e) {
+                    console.warn('更新标签显隐时出错：', e);
+                }
+            }
+
+            map.on && map.on('zoomend', updateLabelsByZoom);
+            // 初始化时根据当前缩放更新一次
+            setTimeout(updateLabelsByZoom, 300);
+
+            
+        }
+
+        function closePanel() { document.getElementById('info-panel').classList.remove('active'); }
+
+        // ================= 1. POI 占领对话逻辑 (接入真实API) =================
+        async function openCaptureChat() {
+            closePanel();
+            document.getElementById('ai-chat-modal').classList.add('active');
+            document.getElementById('chat-title').innerText = `【${currentPoi.title}】数字守卫连线中...`;
+            document.getElementById('chat-title').style.color = '#00d2ff';
+
+            const chatBox = document.getElementById('chat-box');
+            chatBox.innerHTML = '';
+
+            const input = document.getElementById('chat-input');
+            input.value = '';
+            input.placeholder = '输入你的答案...';
+            const sendBtn = document.querySelector('.chat-send');
+            sendBtn.disabled = false;
+            sendBtn.style.opacity = '1';
+            sendBtn.style.cursor = 'pointer';
+            sendBtn.style.background = '#00d2ff';
+            sendBtn.innerText = '提交';
+
+            if (isOccupied) {
+                appendMsg('chat-box', 'ai', `该据点已被【${myFaction}】占领，无需重复答题。`);
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.7';
+                sendBtn.style.cursor = 'not-allowed';
+                sendBtn.innerText = '已占领';
+                return;
+            }
+
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'msg loading';
+            loadingDiv.innerText = 'AI 正在为该坐标生成占领题目...';
+            chatBox.appendChild(loadingDiv); chatBox.scrollTop = chatBox.scrollHeight;
+
+            const question = await generateCaptureQuestion(currentPoi);
+            chatBox.removeChild(loadingDiv);
+
+            if (!question || question.startsWith('[系统提示]')) {
+                captureQuiz = null;
+                appendMsg('chat-box', 'ai', `题目生成失败：${question || '空响应'}\n\n请稍后重试（检查代理/密钥/网络）。`);
+                return;
+            }
+
+            captureQuiz = { question };
+            appendMsg('chat-box', 'ai', `占领挑战题：\n${question}\n\n请回答（答对即可占领）。`);
+        }
+
+        function closeCaptureChat() { document.getElementById('ai-chat-modal').classList.remove('active'); }
+
+        async function sendCaptureMessage() {
+            if (isOccupied) return;
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text) return;
+            if (!captureQuiz?.question) {
+                appendMsg('chat-box', 'ai', '题目尚未生成完成，请稍等 1 秒再答。');
+                return;
+            }
+
+            appendMsg('chat-box', 'user', text);
+            input.value = '';
+
+            const chatBox = document.getElementById('chat-box');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'msg loading';
+            loadingDiv.innerText = 'AI 正在判题中...';
+            chatBox.appendChild(loadingDiv); chatBox.scrollTop = chatBox.scrollHeight;
+
+            const result = await judgeCaptureAnswer({
+                poi: currentPoi,
+                question: captureQuiz.question,
+                answer: text,
+            });
+
+            chatBox.removeChild(loadingDiv);
+
+            if (result.correct) {
+                appendMsg('chat-box', 'ai', (result.feedback || '回答正确！') + `\n\n✅ 此地已被【${myFaction}】占领！全服应援积分 +100！`);
+                isOccupied = true;
+                if (currentPoi?.id) {
+                    occupiedPoiIds.add(currentPoi.id);
+                    try { window.occupiedOwners = window.occupiedOwners || {}; window.occupiedOwners[currentPoi.id] = myFaction; } catch {}
+                    try { window.updateMarkers && window.updateMarkers(); } catch {}
+                }
+                document.getElementById('chat-title').innerText = `✅ 据点已被 ${myFaction} 占领`;
+                document.getElementById('chat-title').style.color = '#39ff14';
+                const sendBtn = document.querySelector('.chat-send');
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.7';
+                sendBtn.style.cursor = 'not-allowed';
+                sendBtn.style.background = '#39ff14';
+                sendBtn.innerText = '已占领';
+            } else {
+                appendMsg('chat-box', 'ai', (result.feedback || '回答不正确。') + `\n\n❌ 未占领，请再试一次。`);
+            }
+        }
+
+        // ================= 2. 全局路线规划 AI 对话逻辑 (接入真实API) =================
+        function togglePlanner() {
+            const modal = document.getElementById('global-planner-modal');
+            modal.classList.toggle('active');
+            if(modal.classList.contains('active')) {
+                closePanel();
+                closeCaptureChat();
+            }
+        }
+
+        async function sendPlannerMessage() {
+            const input = document.getElementById('planner-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            appendMsg('planner-chat-box', 'user', text);
+            input.value = '';
+
+            const chatBox = document.getElementById('planner-chat-box');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'msg loading';
+            loadingDiv.innerText = 'AI 正在利用大模型生成专属路线...';
+            chatBox.appendChild(loadingDiv); chatBox.scrollTop = chatBox.scrollHeight;
+
+            const systemPrompt = `你现在是“海口峡谷本地通”智能体。用户是KPL电竞【${myFaction}】战队的粉丝。请你结合海口的非遗文化、地标建筑和本地美食，为用户定制一个带HTML格式（如<strong>标签换行等）的旅游路线推荐。要融合电竞黑话（如拿一血、刷野、打龙、水晶）。`;
+            const aiReply = await fetchTencentYuanqi(systemPrompt, text);
+
+            chatBox.removeChild(loadingDiv);
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `msg ai`;
+            msgDiv.innerHTML = aiReply;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function appendMsg(boxId, type, text) {
+            const chatBox = document.getElementById(boxId);
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `msg ${type}`;
+            msgDiv.innerText = text;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+    </script>
+</body>
+</html>

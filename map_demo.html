@@ -201,7 +201,7 @@
         // 部署版：前端不再携带密钥，改为调用我们在 Vercel 上的 Serverless 路由 `/api/yuanqi`
         // 统一的真实 API 请求函数（公网部署版）
         async function fetchTencentYuanqi(systemPrompt, userText) {
-            const proxyUrl = `/api/yuanqi`;
+            const proxyUrl = `/.netlify/functions/yuanqi`;
 
             const contentText = `${systemPrompt}\n玩家输入: ${userText}`;
 

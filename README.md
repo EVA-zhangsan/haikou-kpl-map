@@ -8,7 +8,29 @@
 - 操作：打开演示页面后直接点击“加入狼队 / KSG”开始体验（无需本地安装或登录，纯演示视图）。
 
 ## 开发者指南（本地运行）
-前提：本项目使用 `pnpm` 管理依赖。
+本项目支持 `npm` 或 `pnpm`。请二选一，并尽量与仓库中的 lockfile 保持一致：
+- 使用 `npm`：对应 `package-lock.json`
+- 使用 `pnpm`：对应 `pnpm-lock.yaml`
+
+### 方式 A：npm（推荐，当前仓库已包含 package-lock.json）
+
+安装依赖：
+```powershell
+npm install
+```
+
+本地启动开发服务器：
+```powershell
+npm run dev
+# 默认端口通常为 http://localhost:5173 （请查看终端输出）
+```
+
+构建：
+```powershell
+npm run build
+```
+
+### 方式 B：pnpm
 
 安装依赖：
 ```powershell
@@ -18,7 +40,6 @@ pnpm install
 本地启动开发服务器：
 ```powershell
 pnpm dev
-# 默认端口通常为 http://localhost:5173 （请查看终端输出）
 ```
 
 构建：
